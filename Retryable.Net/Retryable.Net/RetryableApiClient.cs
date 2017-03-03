@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -17,27 +18,18 @@ namespace Retryable.Net
         // ReSharper restore InconsistentNaming
 
         private readonly HttpClient _client;
+        private readonly IAuthorizationHandler _authorizationHandler;
         private string _token;
-        private readonly string _authenticationUri;
-        private readonly string _username;
-        private readonly string _password;
-        private readonly Func<HttpResponseMessage, string> _tokenExtractor;
         private readonly int _maxAttempts;
         private readonly int _exceptionRetryDelayMs;
 
         protected RetryableApiClient(HttpClient client,
-            string authenticationUri,
-            string username,
-            string password,
-            Func<HttpResponseMessage, string> tokenExtractor,
+            IAuthorizationHandler authorizationHandler,
             int maxAttempts = DEFAULT_MAX_RETRIES,
             int exceptionRetryDelayMs = DEFAULT_RETRY_MS)
         {
             _client = client;
-            _authenticationUri = authenticationUri;
-            _username = username;
-            _password = password;
-            _tokenExtractor = tokenExtractor;
+            _authorizationHandler = authorizationHandler;
             _maxAttempts = maxAttempts;
             _exceptionRetryDelayMs = exceptionRetryDelayMs;
         }
@@ -84,7 +76,11 @@ namespace Retryable.Net
             {
                 if (_token == null)
                 {
-                    _token = await Authorize(cancellationToken);
+                    _token = await _authorizationHandler.Authorize(cancellationToken);
+                    if (_token == null)
+                    {
+                        throw new AuthenticationException("Authentication failed");
+                    }
                 }
 
                 try
@@ -114,23 +110,6 @@ namespace Retryable.Net
             }
 
             throw new RetriesExceededException();
-
-        }
-
-        private async Task<string> Authorize(CancellationToken cancellationToken)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return null;
-            }
-
-            var credentials = new { username = _username, password = _password };
-            using (var content = new StringContent(JsonConvert.SerializeObject(credentials)))
-            {
-                _client.DefaultRequestHeaders.Authorization = null; // clear any auth headers for this request
-                var response = await _client.PostAsync(_authenticationUri, content, cancellationToken);
-                return _tokenExtractor(response);
-            }
         }
     }
 }

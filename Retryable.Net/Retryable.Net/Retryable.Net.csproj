@@ -45,6 +45,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AuthorizationHandler.cs" />
+    <Compile Include="IAuthorizationHandler.cs" />
     <Compile Include="RetryableApiClient.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RetriesExceededException.cs" />
