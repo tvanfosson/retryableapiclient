@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Http;
-
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -9,8 +9,10 @@ namespace Retryable.Net
 {
     public abstract class RetryableApiClient
     {
-        public const int DEFAULT_MAX_RETRIES = 5;
-        public const int DEFAULT_RETRY_MS = 200;
+        // ReSharper disable InconsistentNaming
+        private const int DEFAULT_MAX_RETRIES = 5;
+        private const int DEFAULT_RETRY_MS = 200;
+        // ReSharper restore InconsistentNaming
 
         private readonly HttpClient _client;
         private string _token;
@@ -40,7 +42,12 @@ namespace Retryable.Net
 
         protected async Task<HttpResponseMessage> GetAsync(string requestUri)
         {
-            return await Try(() => _client.GetAsync(requestUri));
+            return await Try(() => _client.GetAsync(requestUri), new CancellationToken());
+        }
+
+        protected async Task<HttpResponseMessage> GetAsync(string requestUri, CancellationToken cancellationToken)
+        {
+            return await Try(() => _client.GetAsync(requestUri, cancellationToken), cancellationToken);
         }
 
         protected async Task<HttpResponseMessage> PostAsync<T>(string requestUri, T content)
@@ -51,11 +58,22 @@ namespace Retryable.Net
                 {
                     return _client.PostAsync(requestUri, serializedContent);
                 }
-            });
+            }, new CancellationToken());
+        }
+
+        protected async Task<HttpResponseMessage> PostAsync<T>(string requestUri, T content, CancellationToken cancellationToken)
+        {
+            return await Try(() =>
+            {
+                using (var serializedContent = new StringContent(JsonConvert.SerializeObject(content)))
+                {
+                    return _client.PostAsync(requestUri, serializedContent, cancellationToken);
+                }
+            }, cancellationToken);
         }
 
 
-        private async Task<HttpResponseMessage> Try(Func<Task<HttpResponseMessage>> makeRequest)
+        private async Task<HttpResponseMessage> Try(Func<Task<HttpResponseMessage>> makeRequest, CancellationToken cancellationToken)
         {
             var attempt = 0;
 
@@ -68,7 +86,7 @@ namespace Retryable.Net
 
                 if (_token == null)
                 {
-                    _token = await Authorize();
+                    _token = await Authorize(cancellationToken);
                 }
 
                 try
@@ -88,17 +106,17 @@ namespace Retryable.Net
                 {
                     // on exceptions delay before retrying
                     ++attempt;
-                    await Task.Delay(_exceptionRetryDelayMs);
+                    await Task.Delay(_exceptionRetryDelayMs, cancellationToken);
                 }
             }
         }
 
-        private async Task<string> Authorize()
+        private async Task<string> Authorize(CancellationToken cancellationToken)
         {
             var credentials = new { username = _username, password = _password };
             using (var content = new StringContent(JsonConvert.SerializeObject(credentials)))
             {
-                var response = await _client.PostAsync(_authenticationUri, content);
+                var response = await _client.PostAsync(_authenticationUri, content, cancellationToken);
                 return _tokenExtractor(response);
             }
         }
