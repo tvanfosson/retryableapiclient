@@ -44,7 +44,8 @@ namespace Retryable.Net
 
         protected async Task<HttpResponseMessage> GetAsync(string requestUri)
         {
-            return await Try(() => _client.GetAsync(requestUri), new CancellationToken());
+            var tokenSource = new CancellationTokenSource();
+            return await Try(() => _client.GetAsync(requestUri, tokenSource.Token), tokenSource.Token);
         }
 
         protected async Task<HttpResponseMessage> GetAsync(string requestUri, CancellationToken cancellationToken)
@@ -54,13 +55,15 @@ namespace Retryable.Net
 
         protected async Task<HttpResponseMessage> PostAsync<T>(string requestUri, T content)
         {
+            var tokenSource = new CancellationTokenSource();
+
             return await Try(() =>
             {
                 using (var serializedContent = new StringContent(JsonConvert.SerializeObject(content)))
                 {
-                    return _client.PostAsync(requestUri, serializedContent);
+                    return _client.PostAsync(requestUri, serializedContent, tokenSource.Token);
                 }
-            }, new CancellationToken());
+            }, tokenSource.Token);
         }
 
         protected async Task<HttpResponseMessage> PostAsync<T>(string requestUri, T content, CancellationToken cancellationToken)
