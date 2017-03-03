@@ -124,6 +124,7 @@ namespace Retryable.Net
             var credentials = new { username = _username, password = _password };
             using (var content = new StringContent(JsonConvert.SerializeObject(credentials)))
             {
+                _client.DefaultRequestHeaders.Authorization = null; // clear any auth headers for this request
                 var response = await _client.PostAsync(_authenticationUri, content, cancellationToken);
                 return _tokenExtractor(response);
             }
