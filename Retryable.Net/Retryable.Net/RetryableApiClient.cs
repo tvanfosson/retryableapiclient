@@ -12,6 +12,7 @@ namespace Retryable.Net
         // ReSharper disable InconsistentNaming
         private const int DEFAULT_MAX_RETRIES = 5;
         private const int DEFAULT_RETRY_MS = 200;
+        private const string BearerAuth = "Bearer";
         // ReSharper restore InconsistentNaming
 
         private readonly HttpClient _client;
@@ -75,15 +76,8 @@ namespace Retryable.Net
 
         private async Task<HttpResponseMessage> Try(Func<Task<HttpResponseMessage>> makeRequest, CancellationToken cancellationToken)
         {
-            var attempt = 0;
-
-            while (true)
+            for (var attempt = 0; attempt < _maxAttempts; ++attempt)
             {
-                if (attempt > _maxAttempts)
-                {
-                    throw new RetriesExceededException();
-                }
-
                 if (_token == null)
                 {
                     _token = await Authorize(cancellationToken);
@@ -91,28 +85,39 @@ namespace Retryable.Net
 
                 try
                 {
-                    var response = await makeRequest();
-                    switch (response.StatusCode)
+                    if (cancellationToken.IsCancellationRequested)
                     {
-                        case HttpStatusCode.Unauthorized:
-                            _token = null;
-                            ++attempt;
-                            break;
-                        default:
-                            return response;
+                        return null;
+                    }
+
+                    var response = await makeRequest();
+                    if (response.StatusCode == HttpStatusCode.Unauthorized)
+                    {
+                        _token = null;
+                    }
+                    else
+                    {
+                        return response;
                     }
                 }
                 catch
                 {
                     // on exceptions delay before retrying
-                    ++attempt;
                     await Task.Delay(_exceptionRetryDelayMs, cancellationToken);
                 }
             }
+
+            throw new RetriesExceededException();
+
         }
 
         private async Task<string> Authorize(CancellationToken cancellationToken)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
             var credentials = new { username = _username, password = _password };
             using (var content = new StringContent(JsonConvert.SerializeObject(credentials)))
             {
