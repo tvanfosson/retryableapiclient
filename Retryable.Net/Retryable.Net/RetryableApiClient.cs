@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -89,6 +90,8 @@ namespace Retryable.Net
                     {
                         return null;
                     }
+
+                    _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(BearerAuth, _token);
 
                     var response = await makeRequest();
                     if (response.StatusCode == HttpStatusCode.Unauthorized)
